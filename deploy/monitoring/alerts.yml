@@ -1,0 +1,65 @@
+groups:
+  - name: ilnet_network_alerts
+    interval: 30s
+    rules:
+      # Device status alerts
+      - alert: DeviceDown
+        expr: ilnet_device_up == 0
+        for: 5m
+        labels:
+          severity: critical
+          platform: ilnet
+        annotations:
+          summary: "Device {{ $labels.device_name }} is down"
+          description: "Device {{ $labels.device_name }} ({{ $labels.host }}) has been unreachable for more than 5 minutes"
+      
+      # Interface alerts
+      - alert: InterfaceDown
+        expr: ilnet_interface_up == 0
+        for: 5m
+        labels:
+          severity: warning
+          platform: ilnet
+        annotations:
+          summary: "Interface {{ $labels.interface_name }} is down"
+          description: "Interface {{ $labels.interface_name }} on device {{ $labels.device_id }} has been down for more than 5 minutes"
+      
+      # High error rate alert
+      - alert: HighInterfaceErrorRate
+        expr: |
+          (
+            increase(ilnet_interface_in_errors_total[5m]) +
+            increase(ilnet_interface_out_errors_total[5m])
+          ) > 100
+        for: 5m
+        labels:
+          severity: warning
+          platform: ilnet
+        annotations:
+          summary: "High error rate on {{ $labels.interface_name }}"
+          description: "Interface {{ $labels.interface_name }} has {{ $value }} errors in the last 5 minutes"
+      
+      # Collection failure alert
+      - alert: MetricsCollectionFailure
+        expr: increase(ilnet_collection_errors_total[10m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          platform: ilnet
+        annotations:
+          summary: "Metrics collection failure on {{ $labels.device_id }}"
+          description: "Metrics collection has failed for device {{ $labels.device_id }}: {{ $labels.error_type }}"
+
+  - name: ilnet_performance_alerts
+    interval: 30s
+    rules:
+      # Collection time alert
+      - alert: SlowMetricsCollection
+        expr: ilnet_collection_duration_seconds > 30
+        for: 5m
+        labels:
+          severity: info
+          platform: ilnet
+        annotations:
+          summary: "Slow metrics collection on {{ $labels.device_id }}"
+          description: "Metrics collection is taking {{ $value }}s for device {{ $labels.device_id }}"

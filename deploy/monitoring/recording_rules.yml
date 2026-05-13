@@ -1,0 +1,26 @@
+groups:
+  - name: ilnet_recording_rules
+    interval: 15s
+    rules:
+      # Interface bandwidth usage
+      - record: ilnet:interface:bandwidth_in:5m
+        expr: rate(ilnet_interface_in_octets_total[5m]) * 8
+      
+      - record: ilnet:interface:bandwidth_out:5m
+        expr: rate(ilnet_interface_out_octets_total[5m]) * 8
+      
+      # Interface error rates
+      - record: ilnet:interface:error_rate:5m
+        expr: rate(ilnet_interface_in_errors_total[5m]) + rate(ilnet_interface_out_errors_total[5m])
+      
+      # Device uptime percentage
+      - record: ilnet:device:availability:1h
+        expr: avg_over_time(ilnet_device_up[1h]) * 100
+      
+      # Collection success rate
+      - record: ilnet:collector:success_rate:5m
+        expr: |
+          (
+            increase(ilnet_collection_duration_seconds_count[5m]) -
+            increase(ilnet_collection_errors_total[5m])
+          ) / increase(ilnet_collection_duration_seconds_count[5m])

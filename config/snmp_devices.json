@@ -1,0 +1,31 @@
+{
+  "devices": {
+    "router_main": {
+      "host": "192.168.1.1",
+      "name": "Main Router",
+      "community": "public",
+      "version": "2c",
+      "device_type": "router",
+      "tags": ["core", "production"],
+      "enabled": true
+    },
+    "switch_core": {
+      "host": "192.168.1.2",
+      "name": "Core Switch",
+      "community": "public",
+      "version": "2c",
+      "device_type": "switch",
+      "tags": ["core", "production"],
+      "enabled": true
+    },
+    "switch_access": {
+      "host": "192.168.1.3",
+      "name": "Access Switch",
+      "community": "public",
+      "version": "2c",
+      "device_type": "switch",
+      "tags": ["access", "production"],
+      "enabled": true
+    }
+  }
+}
