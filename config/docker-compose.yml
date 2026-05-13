@@ -1,0 +1,196 @@
+version: '3.9'
+
+services:
+  # === SNMP Collector ===
+  snmp-collector:
+    build:
+      context: .
+      dockerfile: docker/collector.Dockerfile
+    container_name: ilnet-collector
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - COLLECTOR_PORT=8000
+      - COLLECTOR_INTERVAL=30
+      - PROMETHEUS_PUSHGATEWAY=http://prometheus:9091
+      - LOG_LEVEL=INFO
+      - SNMP_VERSION=2c
+      - SNMP_COMMUNITY=public
+      - SNMP_TIMEOUT=5
+      - SNMP_RETRIES=3
+    volumes:
+      - ./config:/app/config
+      - ./logs:/var/log/ilnet
+      - ./config/snmp_devices.json:/app/config/snmp_devices.json
+    networks:
+      - ilnet-network
+    depends_on:
+      - prometheus
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # === Prometheus ===
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ilnet-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./deploy/monitoring/alerts.yml:/etc/prometheus/alerts.yml
+      - ./deploy/monitoring/recording_rules.yml:/etc/prometheus/recording_rules.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - ilnet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # === Grafana ===
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ilnet-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource,grafana-worldmap-panel
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+    volumes:
+      - ./config/grafana/datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yaml
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./config/grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
+      - grafana_data:/var/lib/grafana
+    networks:
+      - ilnet-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # === Redis (Cache & Sessions) ===
+  redis:
+    image: redis:7-alpine
+    container_name: ilnet-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass redispassword
+    volumes:
+      - redis_data:/data
+    networks:
+      - ilnet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # === AlertManager ===
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: ilnet-alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./deploy/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    networks:
+      - ilnet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # === Node Exporter (Host Metrics) ===
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: ilnet-node-exporter
+    ports:
+      - "9100:9100"
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks:
+      - ilnet-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  ilnet-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  redis_data:
+    driver: local
+  alertmanager_data:
+    driver: local
